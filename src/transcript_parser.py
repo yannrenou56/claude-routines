@@ -76,27 +76,45 @@ def parse_vtt(content: str, meeting_title: str = "") -> Transcript:
 
 
 def parse_docx(file_path: str, meeting_title: str = "") -> Transcript:
-    """Parse Teams transcript exported as .docx."""
+    """Parse Teams transcript exported as .docx.
+
+    Teams exports paragraphs like:
+        \nSpeaker Name   M:SS\nText line 1\nText line 2
+    Each paragraph block starts with a newline then "Name   timestamp".
+    """
     from docx import Document
 
     doc = Document(file_path)
     transcript = Transcript(meeting_title=meeting_title)
 
+    # Teams format: each paragraph text starts with \n then "Speaker   M:SS\ntext"
     for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
+        raw = para.text
+        if not raw.strip():
             continue
-        match = re.match(r"^([^:]{2,60}):\s+(.*)", text)
-        if match:
-            speaker = match.group(1).strip()
-            content = match.group(2).strip()
+
+        # Split on newlines within the paragraph
+        lines = [l for l in raw.split("\n") if l.strip()]
+        if not lines:
+            continue
+
+        # First non-empty line may be "Speaker Name   M:SS"
+        header_match = re.match(r"^(.+?)\s{2,}(\d+:\d+)\s*$", lines[0].strip())
+        if header_match:
+            speaker = header_match.group(1).strip()
+            timestamp = header_match.group(2).strip()
+            content = " ".join(l.strip() for l in lines[1:] if l.strip())
+            if not content:
+                continue
             if transcript.entries and transcript.entries[-1].speaker == speaker:
                 transcript.entries[-1].text += " " + content
             else:
-                transcript.entries.append(TranscriptEntry(speaker=speaker, text=content))
+                transcript.entries.append(TranscriptEntry(speaker=speaker, text=content, start_time=timestamp))
         else:
-            if transcript.entries:
-                transcript.entries[-1].text += " " + text
+            # Continuation text without a speaker header
+            content = " ".join(l.strip() for l in lines if l.strip())
+            if transcript.entries and content:
+                transcript.entries[-1].text += " " + content
 
     return transcript
 
