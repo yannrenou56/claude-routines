@@ -1,0 +1,6 @@
+anthropic>=0.40.0
+msal>=1.28.0
+requests>=2.32.0
+slack-sdk>=3.33.0
+python-docx>=1.1.0
+python-dotenv>=1.0.0
