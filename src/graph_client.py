@@ -79,6 +79,60 @@ class GraphClient:
         )
         resp.raise_for_status()
 
+    def list_inbox_messages(self, user_email: str, top: int = 50) -> list[dict]:
+        """Fetch recent inbox messages for a user."""
+        data = self._get(
+            f"/users/{user_email}/mailFolders/inbox/messages",
+            params={
+                "$top": top,
+                "$orderby": "receivedDateTime desc",
+                "$select": "id,subject,from,receivedDateTime,isRead,bodyPreview,importance,conversationId",
+            },
+        )
+        return data.get("value", [])
+
+    def get_message_body(self, user_email: str, message_id: str) -> str:
+        """Fetch the full body of a specific message."""
+        data = self._get(
+            f"/users/{user_email}/messages/{message_id}",
+            params={"$select": "body,subject,from,toRecipients"},
+        )
+        return data.get("body", {}).get("content", "")
+
+    def create_draft(self, user_email: str, to_address: str, subject: str, body: str, reply_to_id: str | None = None) -> str:
+        """Create a draft reply in Outlook. NEVER sends. Returns the draft message ID."""
+        if reply_to_id:
+            # Create as a reply draft to keep thread context
+            resp = requests.post(
+                f"{self.GRAPH_URL}/users/{user_email}/messages/{reply_to_id}/createReply",
+                headers=self._headers(),
+                json={},
+            )
+            resp.raise_for_status()
+            draft_id = resp.json()["id"]
+            # Update the draft body
+            resp2 = requests.patch(
+                f"{self.GRAPH_URL}/users/{user_email}/messages/{draft_id}",
+                headers=self._headers(),
+                json={"body": {"contentType": "Text", "content": body}},
+            )
+            resp2.raise_for_status()
+            return draft_id
+        else:
+            payload = {
+                "subject": subject,
+                "isDraft": True,
+                "body": {"contentType": "Text", "content": body},
+                "toRecipients": [{"emailAddress": {"address": to_address}}],
+            }
+            resp = requests.post(
+                f"{self.GRAPH_URL}/users/{user_email}/messages",
+                headers=self._headers(),
+                json=payload,
+            )
+            resp.raise_for_status()
+            return resp.json()["id"]
+
     def resolve_participant_email(self, display_name: str) -> str | None:
         """Try to find the email address for a display name in the directory."""
         try:
