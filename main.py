@@ -2,7 +2,7 @@
 """
 Teams Transcript Processor
 Surveille un dossier SharePoint, génère synthèse + plans d'action,
-envoie par email à chaque participant et poste dans le canal Slack du projet.
+envoie par email à chaque participant.
 
 Usage:
     python main.py             # traite tous les nouveaux transcripts
@@ -22,7 +22,6 @@ load_dotenv()
 from src.transcript_parser import parse_file, Transcript
 from src.summarizer import generate_summary, build_email_html
 from src.graph_client import GraphClient
-from src.slack_notifier import SlackNotifier
 
 
 def load_processed(path: str) -> set[str]:
@@ -36,24 +35,13 @@ def save_processed(path: str, ids: set[str]) -> None:
     Path(path).write_text(json.dumps(sorted(ids), indent=2))
 
 
-def process_transcript(transcript: Transcript, graph: GraphClient, slack: SlackNotifier) -> None:
+def process_transcript(transcript: Transcript, graph: GraphClient) -> None:
     print(f"\n{'='*60}")
     print(f"Traitement : {transcript.meeting_title}")
     print(f"Participants : {', '.join(transcript.speakers)}")
 
     print("  → Génération de la synthèse avec Claude...")
     summary = generate_summary(transcript)
-
-    # Slack channel
-    canal = summary.get("canal_slack", "").strip() or slack.default_channel().lstrip("#")
-    print(f"  → Canal Slack : #{canal}")
-    thread_ts = slack.post_summary(canal, transcript.meeting_title, summary)
-    print(f"  → Synthèse postée dans #{canal}")
-
-    # Thread replies with action plans per participant
-    for participant, actions in summary.get("actions_par_participant", {}).items():
-        slack.post_action_plan_thread(canal, thread_ts, participant, actions)
-        print(f"     • Actions {participant} → thread Slack")
 
     # Emails
     for speaker in transcript.speakers:
@@ -74,9 +62,8 @@ def process_transcript(transcript: Transcript, graph: GraphClient, slack: SlackN
 
 def run_local_file(file_path: str) -> None:
     graph = GraphClient()
-    slack = SlackNotifier()
     transcript = parse_file(file_path)
-    process_transcript(transcript, graph, slack)
+    process_transcript(transcript, graph)
 
 
 def run_sharepoint_watch() -> None:
@@ -84,7 +71,6 @@ def run_sharepoint_watch() -> None:
     processed_ids = load_processed(processed_path)
 
     graph = GraphClient()
-    slack = SlackNotifier()
 
     print("Récupération des fichiers SharePoint...")
     files = graph.list_transcript_files()
@@ -106,7 +92,7 @@ def run_sharepoint_watch() -> None:
             tmp_path = graph.download_file(download_url, suffix)
             transcript = parse_file(tmp_path)
             transcript.meeting_title = transcript.meeting_title or Path(name).stem
-            process_transcript(transcript, graph, slack)
+            process_transcript(transcript, graph)
             processed_ids.add(file_info["id"])
             save_processed(processed_path, processed_ids)
         except Exception as e:

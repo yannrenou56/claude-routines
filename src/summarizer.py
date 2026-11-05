@@ -1,6 +1,7 @@
 """Generate meeting summary and personalized action plans using Claude."""
 
 import json
+import re
 import anthropic
 from .transcript_parser import Transcript
 
@@ -22,14 +23,11 @@ Génère une réponse JSON avec exactement cette structure :
   "synthese": "Synthèse exécutive en 3-5 phrases. Points clés abordés, décisions prises.",
   "points_cles": ["point 1", "point 2", "point 3"],
   "decisions": ["décision 1", "décision 2"],
-  "canal_slack": "nom-du-canal-sans-#",
   "actions_par_participant": {{
     "Nom Participant": ["action 1", "action 2"]
   }}
 }}
 
-Pour canal_slack : déduis un nom de canal court en kebab-case depuis le titre de la réunion
-(ex: "Réunion Projet Alpha" → "projet-alpha"). Utilise uniquement des lettres minuscules, chiffres et tirets.
 Pour actions_par_participant : liste UNIQUEMENT les participants ayant des actions concrètes à faire.
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après."""
 
